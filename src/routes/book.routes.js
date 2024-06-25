@@ -115,7 +115,7 @@ router.get('/', async (req, res) => {
 // Crear un nuevo libro (recurso) [POST]
 router.post('/', upload.single('image'), async (req, res) => {
   const { title, author, genre, publicationDate } = req.body
-  const imagePath = req.file.path
+  const imagePath = req.file?.path
   if (!title || !author || !genre || !publicationDate) {
     return res.status(400).json({
       message: 'Los campos título, autor, género, fecha e imagen son obligatorios'
@@ -132,7 +132,6 @@ router.post('/', upload.single('image'), async (req, res) => {
 
   try {
     const newBook = await book.save()
-    console.log(newBook)
     res.status(201).json(newBook)
   } catch (error) {
     res.status(400).json({
