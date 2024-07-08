@@ -19,6 +19,9 @@ const bookSchema = new mongoose.Schema({
   },
   imagePath: {
     type: String
+  },
+  fragment: {
+    type: String
   }
 })
 

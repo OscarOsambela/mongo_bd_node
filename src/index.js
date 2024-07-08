@@ -6,9 +6,11 @@ const cors = require('cors')
 const path = require('path')
 config()
 
-const bookRoutes = require('./routes/book.routes')
+const bookRoutes = require('./routes/books/book.routes')
+const loginRoutes = require('./routes/login/login.routes')
 
 const app = express()
+app.use(express.json())
 const port = process.env.PORT || 3000
 
 app.use(bodyParser.json()) // parsear body
@@ -21,6 +23,7 @@ mongoose.connect(process.env.MONGO_URL, {
 })
 
 app.use('/books', bookRoutes)
+app.use('/auth', loginRoutes)
 
 app.listen(port, () => {
   console.log(`server listening on port http://localhost: ${port}`)

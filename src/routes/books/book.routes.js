@@ -1,6 +1,6 @@
 const express = require('express')
 const router = express.Router()
-const Book = require('../models/book.model')
+const Book = require('../../models/book.model')
 const multer = require('multer')
 const path = require('path')
 
@@ -46,20 +46,38 @@ const getBook = async (req, res, next) => {
 
 router.get('/', async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit, 10) || 5 // Número de elementos por página
+    const limit = parseInt(req.query.limit, 10) || 100 // Número de elementos por página
     const offset = parseInt(req.query.offset, 10) || 0 // Desplazamiento en los elementos
     const search = req.query.search || ''
-    let sort = req.query.sort || 'title' // Asegúrate de tener un campo de ordenación consistente, por ejemplo, 'title'
+    let sort = req.query.sort || 'title'
     let genre = req.query.genre || 'All'
+    let author = req.query.author || ''
+    let title = req.query.title || ''
+    const publicationDate = req.query.publicationDate || 'All'
 
     // Obtener las opciones de género distintas
     const genreOptions = await Book.distinct('genre')
+    const authorOptions = await Book.distinct('author')
+    const titleOptions = await Book.distinct('title')
+    const publicationDateOptions = await Book.distinct('publicationDate')
 
     // Ajustar el filtro de género si no es "All"
     if (genre !== 'All') {
       genre = genre.split(',').map(g => g.trim())
     } else {
       genre = genreOptions
+    }
+
+    if (author !== '') {
+      author = author.split(',').map(g => g.trim())
+    } else {
+      author = authorOptions
+    }
+
+    if (title !== '') {
+      title = title.split(',').map(g => g.trim())
+    } else {
+      title = titleOptions
     }
 
     // Configurar el criterio de ordenación
@@ -69,8 +87,20 @@ router.get('/', async (req, res) => {
 
     // Construir la consulta
     const query = {
-      title: { $regex: search, $options: 'i' },
-      genre: { $in: genre }
+      title: { $regex: search, $options: 'i', $in: title },
+      genre: { $in: genre },
+      author: { $in: author }
+    }
+
+    if (publicationDate && /^\d{4}-\d{4}$/.test(publicationDate)) {
+      const [start, end] = publicationDate.split('-').map(Number)
+      if (!isNaN(start) && !isNaN(end)) {
+        query.publicationDate = { $gte: start, $lte: end }
+      } else {
+        console.error(`Invalid publicationDate format or values: ${publicationDate}`)
+      }
+    } else if (publicationDate !== 'All') {
+      console.error(`Invalid publicationDate format or values: ${publicationDate}`)
     }
 
     // Ejecutar la consulta con paginación
@@ -89,32 +119,62 @@ router.get('/', async (req, res) => {
       page: Math.floor(offset / limit) + 1, // Calcula la página basada en el offset y el límite
       limit,
       genres: genreOptions,
+      authors: authorOptions,
+      titles: titleOptions,
+      publicationDates: publicationDateOptions,
       books
     }
 
-    console.log(response)
     res.status(200).json(response)
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: true, message: 'Internal Server Error' })
   }
 })
-// antigua api para obtener los libros
-// router.get('/', async (req, res) => {
-//   try {
-//     const books = await Book.find()
-//     if (books.length === 0) {
-//       return res.status(204).json([])
-//     }
-//     res.json(books)
-//   } catch (error) {
-//     res.status(500).json({ message: error.message })
-//   }
-// })
+
+// api para obtener todos los libros sin queries
+router.get('/all', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit, 10)
+    const offset = parseInt(req.query.offset, 10) || 0
+    const search = req.query.search || ''
+    let title = req.query.title || ''
+
+    const titleOptions = await Book.distinct('title')
+
+    if (title !== '') {
+      title = title.split(',').map(g => g.trim())
+    } else {
+      title = titleOptions
+    }
+
+    const query = {
+      title: { $regex: search, $options: 'i', $in: title }
+    }
+
+    const response = await Book.find(query)
+      .skip(offset) // Desplazamiento para la paginación
+      .limit(limit) // Número de elementos por página
+    const totalBooks = await Book.countDocuments(query)
+
+    const responseAllBooks = {
+      error: false,
+      total: totalBooks,
+      page: Math.floor(offset / limit) + 1, // Calcula la página basada en el offset y el límite
+      limit,
+      titles: titleOptions,
+      response
+    }
+
+    res.status(200).json(responseAllBooks) // Success
+  } catch (error) {
+    res.status(500).json({ message: error.message }) // Internal Server Error
+  }
+})
 
 // Crear un nuevo libro (recurso) [POST]
 router.post('/', upload.single('image'), async (req, res) => {
-  const { title, author, genre, publicationDate } = req.body
+  const { title, author, genre, publicationDate, fragment } = req.body
   const imagePath = req.file?.path
   if (!title || !author || !genre || !publicationDate) {
     return res.status(400).json({
@@ -127,6 +187,7 @@ router.post('/', upload.single('image'), async (req, res) => {
     author,
     genre,
     publicationDate,
+    fragment,
     imagePath
   })
 
@@ -153,6 +214,7 @@ router.put('/:id', getBook, upload.single('image'), async (req, res) => {
     book.author = req.body.author || book.author
     book.genre = req.body.genre || book.genre
     book.publicationDate = req.body.publicationDate || book.publicationDate
+    book.fragment = req.body.fragment || book.fragment
     if (req.file) {
       book.imagePath = req.file.path
     }
